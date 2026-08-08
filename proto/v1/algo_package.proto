@@ -1,0 +1,146 @@
+syntax = "proto3";
+
+package birchatlas.v1;
+
+option go_package = "github.com/birchatlas/birchatlas/proto/v1;v1";
+
+// 算法包清单（manifest.yaml 的 protobuf 版本）
+message AlgoManifest {
+  string api_version = 1;             // algo/v2
+  string name = 2;
+  string version = 3;
+  string description = 4;
+  string type = 5;                    // detection/clustering/hybrid
+  string engine = 6;                  // tensorrt/onnxruntime/python
+  repeated InputSpec inputs = 7;
+  repeated OutputSpec outputs = 8;
+  ResourceRequirements resources = 9;
+  SelfCheckConfig selfcheck = 10;
+  repeated string tags = 11;
+  string author = 12;
+  string license = 13;
+  int64 created_at = 14;
+}
+
+message InputSpec {
+  string name = 1;
+  string type = 2;                    // image/tensor/json/float_array
+  repeated string formats = 3;       // jpg/png/raw
+  repeated int32 shape = 4;           // 输入形状 [height, width, channels]
+  string description = 5;
+}
+
+message OutputSpec {
+  string name = 1;
+  string type = 2;                    // float_array/object/boolean
+  string description = 3;
+  repeated string fields = 4;         // 可选字段列表
+}
+
+message ResourceRequirements {
+  int32 min_cpu_cores = 1;
+  int32 min_memory_mb = 2;
+  int32 min_gpu_mem_mb = 3;
+  string min_tensorrt_version = 4;
+  string min_onnxruntime_version = 5;
+  int32 max_inference_ms = 6;
+}
+
+message SelfCheckConfig {
+  string testset_path = 1;
+  string metric = 2;                  // mAP/accuracy/latency
+  double threshold = 3;
+  int32 max_test_time_ms = 4;
+  repeated string required_files = 5;
+}
+
+// 算法包结构
+message AlgoPackage {
+  AlgoManifest manifest = 1;
+  bytes model_data = 2;              // 模型权重
+  bytes inference_code = 3;          // 推理代码
+  bytes selfcheck_script = 4;        // 自检脚本
+  string signature = 5;              // 签名
+}
+
+// OTA 升级包清单
+message OTAManifest {
+  string version = 1;
+  string platform = 2;               // jetson_orin_nx/jetson_xavier_nx
+  string min_hardware_version = 3;
+  repeated string dependencies = 4;
+  GrayscaleConfig grayscale = 5;
+  string changelog = 6;
+  string sha256 = 7;
+  string signature = 8;
+  int64 created_at = 9;
+}
+
+message GrayscaleConfig {
+  string strategy = 1;               // canary/percentage/group
+  repeated string target_devices = 2;
+  int32 percentage = 3;
+  string duration_hours = 4;
+  repeated string exclude_devices = 5;
+}
+
+// 设备注册请求
+message DeviceRegisterRequest {
+  string device_code = 1;            // AA-BBBBBBBB
+  string device_type = 2;            // gateway/collector/sensor
+  string fingerprint = 3;            // 硬件指纹
+  string public_key = 4;             // RSA 公钥
+  string firmware_version = 5;
+  string hardware_version = 6;
+  map<string, string> capabilities = 7;
+}
+
+// 设备注册响应
+message DeviceRegisterResponse {
+  int32 code = 1;
+  string message = 2;
+  DeviceCert cert = 3;
+}
+
+message DeviceCert {
+  string device_cert = 1;            // 设备证书
+  string ca_cert = 2;                // CA 根证书
+  string cert_expiry = 3;            // 过期时间
+}
+
+// 物模型定义
+message ThingModel {
+  string name = 1;
+  string version = 2;
+  repeated Property properties = 3;
+  repeated Event events = 4;
+  repeated Service services = 5;
+  repeated Command commands = 6;
+}
+
+message Property {
+  string name = 1;
+  string data_type = 2;               // int/float/string/bool/json
+  string description = 3;
+  string access_mode = 4;             // read/readwrite
+  map<string, string> constraints = 5;
+}
+
+message Event {
+  string name = 1;
+  string description = 2;
+  repeated Property parameters = 3;
+}
+
+message Service {
+  string name = 1;
+  string description = 2;
+  repeated Property inputs = 3;
+  repeated Property outputs = 4;
+}
+
+message Command {
+  string name = 1;
+  string description = 2;
+  repeated Property parameters = 3;
+}

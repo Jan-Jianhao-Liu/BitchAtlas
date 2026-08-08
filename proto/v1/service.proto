@@ -1,0 +1,355 @@
+syntax = "proto3";
+
+package birchatlas.v1;
+
+option go_package = "github.com/birchatlas/birchatlas/proto/v1;v1";
+
+// 设备管理服务
+service DeviceService {
+  // 设备注册
+  rpc Register(DeviceRegisterRequest) returns (DeviceRegisterResponse);
+  // 查询设备影子
+  rpc GetShadow(GetShadowRequest) returns (DeviceShadow);
+  // 更新设备影子（云端更新 desired）
+  rpc UpdateShadow(UpdateShadowRequest) returns (UpdateShadowResponse);
+  // 查询设备列表
+  rpc ListDevices(ListDevicesRequest) returns (ListDevicesResponse);
+}
+
+message GetShadowRequest {
+  string device_code = 1;
+}
+
+message UpdateShadowRequest {
+  string device_code = 1;
+  map<string, string> desired = 2;
+}
+
+message UpdateShadowResponse {
+  bool success = 1;
+  uint64 version = 2;
+}
+
+message ListDevicesRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string device_type = 3;
+  string status = 4;
+}
+
+message ListDevicesResponse {
+  int32 total = 1;
+  repeated DeviceInfo devices = 2;
+}
+
+message DeviceInfo {
+  string device_code = 1;
+  string name = 2;
+  string device_type = 3;
+  int32 status = 4;
+  int64 last_online = 5;
+  string project_name = 6;
+}
+
+// 数据接入服务
+service IngestService {
+  // 上传检测数据
+  rpc UploadData(DataUploadRequest) returns (DataUploadResponse);
+  // 批量上传数据
+  rpc BatchUploadData(BatchUploadRequest) returns (BatchUploadResponse);
+  // 查询检测数据
+  rpc QueryData(QueryDataRequest) returns (QueryDataResponse);
+}
+
+message BatchUploadRequest {
+  repeated DataUploadRequest records = 1;
+}
+
+message BatchUploadResponse {
+  int32 total_count = 1;
+  int32 success_count = 2;
+  int32 failed_count = 3;
+  repeated FailedRecord failed_records = 4;
+}
+
+message FailedRecord {
+  string record_id = 1;
+  string error = 2;
+}
+
+message QueryDataRequest {
+  string project_id = 1;
+  string gateway_code = 2;
+  string dev_code = 3;
+  string data_type = 4;
+  int64 start_time = 5;
+  int64 end_time = 6;
+  int32 page = 7;
+  int32 page_size = 8;
+}
+
+message QueryDataResponse {
+  int32 total = 1;
+  repeated DataRecord records = 2;
+}
+
+message DataRecord {
+  string record_id = 1;
+  string dev_code = 2;
+  string record_time = 3;
+  double factor = 4;
+  repeated string data_items = 5;
+  repeated string outlier_indices = 6;
+  string quality_grade = 7;
+}
+
+// 聚类分析服务
+service ClusterService {
+  // 创建聚类任务
+  rpc CreateJob(ClusterJobRequest) returns (ClusterJobResponse);
+  // 查询任务状态
+  rpc GetJob(GetJobRequest) returns (ClusterJobResponse);
+  // 取消任务
+  rpc CancelJob(CancelJobRequest) returns (CancelJobResponse);
+  // 获取聚类结果
+  rpc GetResults(GetResultsRequest) returns (GetResultsResponse);
+  // CF 树增量合并
+  rpc MergeCFtrees(CFmergeRequest) returns (CFmergeResponse);
+  // 获取评估指标
+  rpc GetEvaluation(GetEvaluationRequest) returns (GetEvaluationResponse);
+}
+
+message GetJobRequest {
+  string job_id = 1;
+}
+
+message CancelJobRequest {
+  string job_id = 1;
+}
+
+message CancelJobResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message GetResultsRequest {
+  string job_id = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+}
+
+message GetResultsResponse {
+  string job_id = 1;
+  repeated ClusterPoint points = 2;
+  ClusterEvaluation evaluation = 3;
+  int32 total_points = 4;
+}
+
+message GetEvaluationRequest {
+  string job_id = 1;
+}
+
+// 算法管理服务
+service AlgoService {
+  // 上传算法包
+  rpc UploadPackage(UploadPackageRequest) returns (UploadPackageResponse);
+  // 发布算法
+  rpc Publish(PublishRequest) returns (PublishResponse);
+  // 灰度下发
+  rpc GrayRelease(GrayReleaseRequest) returns (GrayReleaseResponse);
+  // 查询算法列表
+  rpc ListPackages(ListPackagesRequest) returns (ListPackagesResponse);
+}
+
+message UploadPackageRequest {
+  AlgoPackage package = 1;
+}
+
+message UploadPackageResponse {
+  int64 algo_id = 1;
+  string name = 2;
+  string version = 3;
+  int32 status = 4;
+}
+
+message PublishRequest {
+  int64 algo_id = 1;
+}
+
+message PublishResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message GrayReleaseRequest {
+  int64 algo_id = 1;
+  repeated string target_devices = 2;
+  int32 percentage = 3;
+}
+
+message GrayReleaseResponse {
+  bool success = 1;
+  string task_id = 2;
+  string message = 3;
+}
+
+message ListPackagesRequest {
+  string algo_type = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+}
+
+message ListPackagesResponse {
+  int32 total = 1;
+  repeated AlgoInfo packages = 2;
+}
+
+message AlgoInfo {
+  int64 id = 1;
+  string name = 2;
+  string version = 3;
+  string type = 4;
+  int32 status = 5;
+  int64 created_at = 6;
+}
+
+// 任务调度服务
+service TaskService {
+  // 创建检测任务
+  rpc CreateTask(CreateTaskRequest) returns (CreateTaskResponse);
+  // 查询任务状态
+  rpc GetTask(GetTaskRequest) returns (GetTaskResponse);
+  // 取消任务
+  rpc CancelTask(CancelTaskRequest) returns (CancelTaskResponse);
+  // 批量下发
+  rpc BatchDispatch(BatchDispatchRequest) returns (BatchDispatchResponse);
+}
+
+message CreateTaskRequest {
+  string task_type = 1;
+  string target_device = 2;
+  string target_measure_point = 3;
+  map<string, string> params = 4;
+  int64 scheduled_time = 5;
+}
+
+message CreateTaskResponse {
+  int64 task_id = 1;
+  string task_id_str = 2;
+  string status = 3;
+}
+
+message GetTaskRequest {
+  int64 task_id = 1;
+}
+
+message GetTaskResponse {
+  TaskInfo task = 1;
+}
+
+message TaskInfo {
+  int64 task_id = 1;
+  string task_type = 2;
+  string status = 3;
+  map<string, string> result = 4;
+  string error_message = 5;
+  int64 created_at = 6;
+  int64 finished_at = 7;
+}
+
+message CancelTaskRequest {
+  int64 task_id = 1;
+}
+
+message CancelTaskResponse {
+  bool success = 1;
+}
+
+message BatchDispatchRequest {
+  repeated CreateTaskRequest tasks = 1;
+}
+
+message BatchDispatchResponse {
+  int32 total = 1;
+  int32 success = 2;
+  repeated CreateTaskResponse results = 3;
+}
+
+// 可视化大屏服务
+service DashboardService {
+  // 获取总览数据
+  rpc GetOverview(GetOverviewRequest) returns (GetOverviewResponse);
+  // 获取设备统计
+  rpc GetDeviceStats(GetDeviceStatsRequest) returns (GetDeviceStatsResponse);
+  // 获取检测趋势
+  rpc GetDetectionTrend(GetDetectionTrendRequest) returns (GetDetectionTrendResponse);
+  // 获取质量分布
+  rpc GetQualityDistribution(GetQualityDistributionRequest) returns (GetQualityDistributionResponse);
+}
+
+message GetOverviewRequest {}
+
+message GetOverviewResponse {
+  OverviewData data = 1;
+}
+
+message OverviewData {
+  int32 total_devices = 1;
+  int32 online_devices = 2;
+  int32 offline_devices = 3;
+  int32 total_projects = 4;
+  int32 total_detections_today = 5;
+  int32 total_outliers_today = 6;
+  repeated QualityGradeDistribution quality_distribution = 7;
+}
+
+message QualityGradeDistribution {
+  string grade = 1;
+  int32 count = 2;
+  double percentage = 3;
+}
+
+message GetDeviceStatsRequest {
+  string group_by = 1;               // project/device_type/status
+}
+
+message GetDeviceStatsResponse {
+  repeated DeviceStatsItem items = 2;
+}
+
+message DeviceStatsItem {
+  string name = 1;
+  int32 count = 2;
+  double percentage = 3;
+}
+
+message GetDetectionTrendRequest {
+  string granularity = 1;            // hour/day/week/month
+  int32 range = 2;                    // 数据范围
+  string project_id = 3;
+}
+
+message GetDetectionTrendResponse {
+  repeated TrendPoint points = 4;
+}
+
+message TrendPoint {
+  string timestamp = 1;
+  int32 detection_count = 2;
+  int32 outlier_count = 3;
+  double avg_spacing = 4;
+}
+
+message GetQualityDistributionRequest {
+  string project_id = 1;
+  string group_by = 2;                // region/floor/measure_point
+}
+
+message GetQualityDistributionResponse {
+  repeated QualityGroup groups = 1;
+}
+
+message QualityGroup {
+  string name = 1;
+  repeated QualityGradeDistribution grades = 2;
+}

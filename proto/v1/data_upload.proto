@@ -1,0 +1,150 @@
+syntax = "proto3";
+
+package birchatlas.v1;
+
+option go_package = "github.com/birchatlas/birchatlas/proto/v1;v1";
+
+// 数据上传请求（兼容 V1.0 字段语义）
+message DataUploadRequest {
+  string id = 1;                    // 测点ID
+  string dev_code = 2;              // 采集仪编号 (AA-BBBBBBBB)
+  int32 img1_w = 3;
+  int32 img1_h = 4;
+  int32 img2_w = 5;
+  int32 img2_h = 6;
+  int32 img3_w = 7;
+  int32 img3_h = 8;
+  double factor = 9;                // mm/px
+  double high = 10;                 // 拍摄高度 m
+  string par1 = 11;
+  string par2 = 12;
+  string par3 = 13;
+  string url1 = 14;
+  string url2 = 15;
+  string url3 = 16;
+  string record_time = 17;          // ISO 8601 格式
+  
+  // 算法检测特有字段
+  repeated DataItem data_list = 18;
+  int32 source = 19;                // 0=人工 1=算法
+}
+
+message DataItem {
+  int32 type = 1;                   // 1=底横筋 2=底纵筋 3=面横筋 4=面纵筋
+  repeated double vals = 2;         // 间距测量值数组
+  repeated uint32 outlier_indices = 3; // 离群值索引
+}
+
+// 数据上传响应
+message DataUploadResponse {
+  int32 code = 1;
+  string msg = 2;
+  DataUploadData data = 3;
+}
+
+message DataUploadData {
+  uint64 record_id = 1;
+  string outlier_hint = 2;          // 离群值提示
+  repeated OutlierDetail outliers = 3;
+}
+
+message OutlierDetail {
+  int32 data_type = 1;
+  uint32 index = 2;
+  double value = 3;
+  double expected_mean = 4;
+  double z_score = 5;
+}
+
+// 设备影子
+message DeviceShadow {
+  string device_code = 1;
+  ShadowState desired = 2;
+  ShadowState reported = 3;
+  ShadowState delta = 4;
+  uint64 version = 5;
+  int64 updated_at = 6;
+}
+
+message ShadowState {
+  map<string, string> state = 1;
+}
+
+// 指令下发
+message CommandRequest {
+  string command_id = 1;
+  string type = 2;                  // start_detect/stop_detect/update_algo/ota_upgrade/reboot/get_status
+  string target_device = 3;
+  string target_measure_point = 4;
+  map<string, string> params = 5;
+  string signature = 6;
+  int64 timestamp = 7;
+}
+
+// 指令应答
+message CommandAck {
+  string command_id = 1;
+  string device_code = 2;
+  int32 status = 3;                 // 0=待执行 1=执行中 2=成功 3=失败
+  string message = 4;
+  map<string, string> result = 5;
+  int64 timestamp = 6;
+}
+
+// 遥测数据
+message TelemetryData {
+  string device_code = 1;
+  int64 timestamp = 2;
+  TelemetryCpu cpu = 3;
+  TelemetryGpu gpu = 4;
+  TelemetryMemory memory = 5;
+  TelemetryNetwork network = 6;
+  TelemetryInference inference = 7;
+  TelemetryClustering clustering = 8;
+}
+
+message TelemetryCpu {
+  float usage_percent = 1;
+  float temperature_celsius = 2;
+}
+
+message TelemetryGpu {
+  float usage_percent = 1;
+  float temperature_celsius = 2;
+  int32 memory_used_mb = 3;
+  int32 memory_total_mb = 4;
+}
+
+message TelemetryMemory {
+  int64 used_mb = 1;
+  int64 total_mb = 2;
+}
+
+message TelemetryNetwork {
+  float rx_mbps = 1;
+  float tx_mbps = 2;
+}
+
+message TelemetryInference {
+  float last_inference_ms = 1;
+  int64 total_inferences = 2;
+  float avg_inference_ms = 3;
+}
+
+message TelemetryClustering {
+  int32 cf_tree_size = 1;
+  float last_cluster_ms = 2;
+  int64 total_points_processed = 3;
+  int64 total_outliers_detected = 4;
+}
+
+// 告警消息
+message AlarmMessage {
+  string alarm_id = 1;
+  string device_code = 2;
+  string alarm_type = 3;            // device_offline/quality_drop/inference_error/outlier_threshold
+  int32 severity = 4;               // 1=低 2=中 3=高 4=紧急
+  string message = 5;
+  map<string, string> detail = 6;
+  int64 timestamp = 7;
+}

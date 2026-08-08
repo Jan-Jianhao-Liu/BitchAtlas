@@ -1,0 +1,297 @@
+version: '3.8'
+
+services:
+  # EMQX MQTT Broker
+  emqx:
+    image: emqx/emqx:5.8.4
+    container_name: birchatlas-emqx
+    hostname: emqx
+    ports:
+      - "1883:1883"    # MQTT
+      - "8883:8883"    # MQTT over TLS
+      - "8083:8083"    # WebSocket
+      - "8084:8084"    # WebSocket over TLS
+      - "18083:18083"  # Dashboard
+    environment:
+      - EMQX_NAME=emqx
+      - EMQX_HOST=127.0.0.1
+      - EMQX_LISTENERS__TCP__DEFAULT__MAX_CONNECTIONS=10000
+      - EMQX_AUTH__DEFAULT__BACKEND=built_in_database
+      - EMQX_AUTH__DEFAULT__USERNAME=admin
+      - EMQX_AUTH__DEFAULT__PASSWORD=public
+    volumes:
+      - emqx-data:/opt/emqx/data
+      - emqx-log:/opt/emqx/log
+    healthcheck:
+      test: ["CMD", "emqx", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - birchatlas-net
+
+  # PostgreSQL + TimescaleDB
+  postgres:
+    image: timescale/timescaledb:2.15.2-pg15
+    container_name: birchatlas-postgres
+    hostname: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=birchatlas
+      - POSTGRES_PASSWORD=birchatlas123
+      - POSTGRES_DB=birchatlas
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init/postgres:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U birchatlas"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - birchatlas-net
+
+  # ClickHouse
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.12
+    container_name: birchatlas-clickhouse
+    hostname: clickhouse
+    ports:
+      - "8123:8123"    # HTTP
+      - "9000:9000"    # Native
+      - "9009:9009"    # Interserver HTTP
+    environment:
+      - CLICKHOUSE_DB=birchatlas
+      - CLICKHOUSE_USER=birchatlas
+      - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
+      - CLICKHOUSE_PASSWORD=birchatlas123
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ./init/clickhouse:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - birchatlas-net
+
+  # Redis
+  redis:
+    image: redis:7.4-alpine
+    container_name: birchatlas-redis
+    hostname: redis
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass birchatlas123 --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "birchatlas123", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    networks:
+      - birchatlas-net
+
+  # MinIO Object Storage
+  minio:
+    image: minio/minio:latest
+    container_name: birchatlas-minio
+    hostname: minio
+    ports:
+      - "9000:9000"    # S3 API
+      - "9001:9001"    # Console
+    environment:
+      - MINIO_ROOT_USER=birchatlas
+      - MINIO_ROOT_PASSWORD=birchatlas123
+      - MINIO_ACCESS_KEY=birchatlas
+      - MINIO_SECRET_KEY=birchatlas1234567890abcdef
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - birchatlas-net
+
+  # Kafka
+  kafka:
+    image: bitnami/kafka:3.7
+    container_name: birchatlas-kafka
+    hostname: kafka
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      - KAFKA_CFG_NODE_ID=0
+      - KAFKA_CFG_PROCESS_ROLES=broker,controller
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@kafka:9093
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_DENY_AUTO_CREATE_TOPICS_ENABLE=false
+      - KAFKA_LOG_DIRS=/bitnami/kafka/data
+      - ALLOW_PLAINTEXT_LISTENER=yes
+    volumes:
+      - kafka-data:/bitnami/kafka
+    healthcheck:
+      test: ["CMD", "kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+      - birchatlas-net
+
+  # Auth Service
+  auth-svc:
+    build:
+      context: ../cloud/auth-svc
+      dockerfile: Dockerfile
+    container_name: birchatlas-auth-svc
+    hostname: auth-svc
+    ports:
+      - "8001:8001"
+    environment:
+      - APP_NAME=auth-svc
+      - APP_PORT=8001
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=birchatlas
+      - POSTGRES_PASSWORD=birchatlas123
+      - POSTGRES_DB=birchatlas
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=birchatlas123
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - birchatlas-net
+
+  # Device Service
+  device-svc:
+    build:
+      context: ../cloud/device-svc
+      dockerfile: Dockerfile
+    container_name: birchatlas-device-svc
+    hostname: device-svc
+    ports:
+      - "8002:8002"
+    environment:
+      - APP_NAME=device-svc
+      - APP_PORT=8002
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=birchatlas
+      - POSTGRES_PASSWORD=birchatlas123
+      - POSTGRES_DB=birchatlas
+      - MQTT_HOST=emqx
+      - MQTT_PORT=1883
+    depends_on:
+      postgres:
+        condition: service_healthy
+      emqx:
+        condition: service_healthy
+    networks:
+      - birchatlas-net
+
+  # Ingest Service
+  ingest-svc:
+    build:
+      context: ../cloud/ingest-svc
+      dockerfile: Dockerfile
+    container_name: birchatlas-ingest-svc
+    hostname: ingest-svc
+    ports:
+      - "8006:8006"
+    environment:
+      - APP_NAME=ingest-svc
+      - APP_PORT=8006
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=8123
+      - CLICKHOUSE_USER=birchatlas
+      - CLICKHOUSE_PASSWORD=birchatlas123
+      - CLICKHOUSE_DB=birchatlas
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=birchatlas
+      - MINIO_SECRET_KEY=birchatlas1234567890abcdef
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - birchatlas-net
+
+  # Cluster Service
+  cluster-svc:
+    build:
+      context: ../cloud/cluster-svc
+      dockerfile: Dockerfile
+    container_name: birchatlas-cluster-svc
+    hostname: cluster-svc
+    ports:
+      - "8007:8007"
+    environment:
+      - APP_NAME=cluster-svc
+      - APP_PORT=8007
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=8123
+      - CLICKHOUSE_USER=birchatlas
+      - CLICKHOUSE_PASSWORD=birchatlas123
+      - CLICKHOUSE_DB=birchatlas
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=birchatlas
+      - POSTGRES_PASSWORD=birchatlas123
+      - POSTGRES_DB=birchatlas
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - birchatlas-net
+
+  # Web Console
+  web:
+    build:
+      context: ../web
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=http://localhost:8001
+        - VITE_MQTT_URL=ws://localhost:8083/mqtt
+    container_name: birchatlas-web
+    hostname: web
+    ports:
+      - "8080:80"
+    depends_on:
+      - auth-svc
+      - device-svc
+      - ingest-svc
+      - cluster-svc
+    networks:
+      - birchatlas-net
+
+networks:
+  birchatlas-net:
+    driver: bridge
+    name: birchatlas-net
+
+volumes:
+  emqx-data:
+  emqx-log:
+  postgres-data:
+  clickhouse-data:
+  redis-data:
+  minio-data:
+  kafka-data:
