@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/waifu_banner.png" width="100%" alt="BirchAtlas · 地底熔炉矮人锻造女工匠" />
+  <img src="assets/waifu_banner.jpg" width="100%" alt="BirchAtlas · 地底熔炉矮人锻造女工匠" />
 </p>
 
 钢筋间距差一寸、结构安危差千里。在矮人的熔炉、符文规与蒸汽测距臂下，没有任何一处将就。
